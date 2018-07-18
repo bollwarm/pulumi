@@ -155,7 +155,7 @@ func renderSummaryEvent(event engine.SummaryEventPayload, opts backend.DisplayOp
 
 	changeCount := 0
 	for op, c := range changes {
-		if op != deploy.OpSame {
+		if op != deploy.OpSame && op != deploy.OpReadDelete {
 			changeCount += c
 		}
 	}
@@ -189,7 +189,7 @@ func renderSummaryEvent(event engine.SummaryEventPayload, opts backend.DisplayOp
 
 	// Now summarize all of the changes; we print sames a little differently.
 	for _, op := range deploy.StepOps {
-		if op != deploy.OpSame {
+		if op != deploy.OpSame && op != deploy.OpReadDelete {
 			if c := changes[op]; c > 0 {
 				opDescription := string(op)
 				if !event.IsPreview {
@@ -308,7 +308,10 @@ func isRootURN(urn resource.URN) bool {
 // shouldShow returns true if a step should show in the output.
 func shouldShow(step engine.StepEventMetadata, opts backend.DisplayOptions) bool {
 	// For certain operations, whether they are tracked is controlled by flags (to cut down on superfluous output).
-	if step.Op == deploy.OpSame {
+	if step.Op == deploy.OpReadDelete {
+		// read deletes are never shown.
+		return false
+	} else if step.Op == deploy.OpSame {
 		// If the op is the same, it is possible that the resource's metadata changed.  In that case, still show it.
 		if step.Old.Protect != step.New.Protect {
 			return true

@@ -385,6 +385,88 @@ func (s *ReplaceStep) Apply(preview bool) (resource.Status, error) {
 	return resource.StatusOK, nil
 }
 
+type ReadStep struct {
+	plan  *Plan
+	event ReadResourceEvent
+	old   *resource.State
+	new   *resource.State
+	keys  []resource.PropertyKey
+}
+
+func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State, new *resource.State, keys []resource.PropertyKey) Step {
+	contract.Assert(new != nil)
+	contract.Assertf(new.External, "target of Read step must be marked External")
+	contract.Assertf(new.Custom, "target of Read step must be Custom")
+	return &ReadStep{
+		plan:  plan,
+		event: event,
+		old:   old,
+		new:   new,
+		keys:  keys,
+	}
+}
+
+func (s *ReadStep) Op() StepOp                   { return OpRead }
+func (s *ReadStep) Plan() *Plan                  { return s.plan }
+func (s *ReadStep) Type() tokens.Type            { return s.new.Type }
+func (s *ReadStep) URN() resource.URN            { return s.new.URN }
+func (s *ReadStep) Old() *resource.State         { return s.old }
+func (s *ReadStep) New() *resource.State         { return s.new }
+func (s *ReadStep) Res() *resource.State         { return s.new }
+func (s *ReadStep) Keys() []resource.PropertyKey { return s.keys }
+func (s *ReadStep) Logical() bool                { return true }
+
+func (s *ReadStep) Apply(preview bool) (resource.Status, error) {
+	urn := s.new.URN
+	id := s.new.ID
+	if id != plugin.UnknownStringValue {
+		prov, err := getProvider(s)
+		if err != nil {
+			return resource.StatusOK, err
+		}
+
+		result, err := prov.Read(urn, id, s.new.Inputs)
+		if err != nil {
+			return resource.StatusUnknown, err
+		}
+
+		s.new.Outputs = result
+	}
+
+	s.event.Done(&ReadResult{State: s.new})
+	return resource.StatusOK, nil
+}
+
+type ReadDeleteStep struct {
+	plan *Plan
+	old  *resource.State
+}
+
+func NewReadDeleteStep(plan *Plan, old *resource.State) Step {
+	contract.Assert(old != nil)
+	contract.Assertf(old.External, "target of ReadDelete step must be marked External")
+	contract.Assertf(old.Custom, "target of Read step must be Custom")
+	return &ReadDeleteStep{
+		plan: plan,
+		old:  old,
+	}
+}
+
+func (s *ReadDeleteStep) Op() StepOp           { return OpReadDelete }
+func (s *ReadDeleteStep) Plan() *Plan          { return s.plan }
+func (s *ReadDeleteStep) Type() tokens.Type    { return s.old.Type }
+func (s *ReadDeleteStep) URN() resource.URN    { return s.old.URN }
+func (s *ReadDeleteStep) Old() *resource.State { return s.old }
+func (s *ReadDeleteStep) New() *resource.State { return nil }
+func (s *ReadDeleteStep) Res() *resource.State { return s.old }
+func (s *ReadDeleteStep) Logical() bool        { return true }
+
+func (s *ReadDeleteStep) Apply(preview bool) (resource.Status, error) {
+	// Appyling a ReadDeleteStep is a no-op that simply removes the read
+	// resource from the snapshot.
+	return resource.StatusOK, nil
+}
+
 // StepOp represents the kind of operation performed by a step.  It evaluates to its string label.
 type StepOp string
 
@@ -396,6 +478,8 @@ const (
 	OpReplace           StepOp = "replace"            // replacing a resource with a new one.
 	OpCreateReplacement StepOp = "create-replacement" // creating a new resource for a replacement.
 	OpDeleteReplaced    StepOp = "delete-replaced"    // deleting an existing resource after replacement.
+	OpRead              StepOp = "read"               // reading an existing resource.
+	OpReadDelete        StepOp = "read-delete"        // deleting an read resource from the snapshot.
 )
 
 // StepOps contains the full set of step operation types.
@@ -407,6 +491,8 @@ var StepOps = []StepOp{
 	OpReplace,
 	OpCreateReplacement,
 	OpDeleteReplaced,
+	OpRead,
+	OpReadDelete,
 }
 
 // Color returns a suggested color for lines of this op type.
@@ -426,6 +512,10 @@ func (op StepOp) Color() string {
 		return colors.SpecCreateReplacement
 	case OpDeleteReplaced:
 		return colors.SpecDeleteReplaced
+	case OpRead:
+		return colors.SpecCreate
+	case OpReadDelete:
+		return colors.SpecDelete
 	default:
 		contract.Failf("Unrecognized resource step op: '%v'", op)
 		return ""
@@ -454,6 +544,10 @@ func (op StepOp) RawPrefix() string {
 		return "++"
 	case OpDeleteReplaced:
 		return "--"
+	case OpRead:
+		return ">-"
+	case OpReadDelete:
+		return ">-"
 	default:
 		contract.Failf("Unrecognized resource step op: %v", op)
 		return ""
@@ -462,8 +556,10 @@ func (op StepOp) RawPrefix() string {
 
 func (op StepOp) PastTense() string {
 	switch op {
-	case OpSame, OpCreate, OpDelete, OpReplace, OpCreateReplacement, OpDeleteReplaced, OpUpdate:
+	case OpSame, OpCreate, OpDelete, OpReplace, OpCreateReplacement, OpDeleteReplaced, OpUpdate, OpReadDelete:
 		return string(op) + "d"
+	case OpRead:
+		return "read"
 	default:
 		contract.Failf("Unexpected resource step op: %v", op)
 		return ""

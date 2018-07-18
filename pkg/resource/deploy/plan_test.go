@@ -174,6 +174,7 @@ func TestBasicCRUDPlan(t *testing.T) {
 		nil,
 		"",
 		false,
+		false,
 		nil,
 	)
 	oldResC := resource.NewState(typC, urnC, true, false, resource.ID("c-c-c"),
@@ -187,6 +188,7 @@ func TestBasicCRUDPlan(t *testing.T) {
 		},
 		"",
 		false,
+		false,
 		nil,
 	)
 	oldResD := resource.NewState(typD, urnD, true, false, resource.ID("d-d-d"),
@@ -196,6 +198,7 @@ func TestBasicCRUDPlan(t *testing.T) {
 		},
 		nil,
 		"",
+		false,
 		false,
 		nil,
 	)
