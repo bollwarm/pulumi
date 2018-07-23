@@ -87,6 +87,7 @@ type ReadResourceEvent interface {
 	Type() tokens.Type
 	Parent() resource.URN
 	Properties() resource.PropertyMap
+	Dependencies() []resource.URN
 
 	// Done indicates that we are done with this event.
 	Done(result *ReadResult)

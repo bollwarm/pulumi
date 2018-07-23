@@ -46,7 +46,7 @@ func (sg *stepGenerator) GenerateReadStep(event ReadResourceEvent) (Step, error)
 	urn := sg.generateURN(event.Parent(), event.Type(), event.Name())
 	newState := resource.NewState(event.Type(), urn, true /*custom*/, false /*delete*/, event.ID(),
 		event.Properties(), make(resource.PropertyMap) /* outputs */, event.Parent(), false, /*protect*/
-		true /*external*/, nil /* dependencies */)
+		true /*external*/, event.Dependencies())
 
 	old := sg.plan.Olds()[urn]
 	sg.reads[urn] = true

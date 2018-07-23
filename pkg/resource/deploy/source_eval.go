@@ -311,6 +311,11 @@ func (rm *resmon) ReadResource(ctx context.Context,
 
 	id := resource.ID(req.GetId())
 	label := fmt.Sprintf("ResourceMonitor.ReadResource(%s, %s, %s)", id, t, name)
+	var deps []resource.URN
+	for _, depURN := range req.GetDependencies() {
+		deps = append(deps, resource.URN(depURN))
+	}
+
 	props, err := plugin.UnmarshalProperties(req.GetProperties(), plugin.MarshalOptions{
 		Label:        label,
 		KeepUnknowns: true,
@@ -320,12 +325,13 @@ func (rm *resmon) ReadResource(ctx context.Context,
 	}
 
 	event := &readResourceEvent{
-		id:       id,
-		name:     name,
-		baseType: t,
-		parent:   parent,
-		props:    props,
-		done:     make(chan *ReadResult),
+		id:           id,
+		name:         name,
+		baseType:     t,
+		parent:       parent,
+		props:        props,
+		dependencies: deps,
+		done:         make(chan *ReadResult),
 	}
 	select {
 	case rm.regReadChan <- event:
@@ -520,12 +526,13 @@ func (g *registerResourceOutputsEvent) Done() {
 }
 
 type readResourceEvent struct {
-	id       resource.ID
-	name     tokens.QName
-	baseType tokens.Type
-	parent   resource.URN
-	props    resource.PropertyMap
-	done     chan *ReadResult
+	id           resource.ID
+	name         tokens.QName
+	baseType     tokens.Type
+	parent       resource.URN
+	props        resource.PropertyMap
+	dependencies []resource.URN
+	done         chan *ReadResult
 }
 
 var _ ReadResourceEvent = (*readResourceEvent)(nil)
@@ -537,6 +544,7 @@ func (g *readResourceEvent) Name() tokens.QName               { return g.name }
 func (g *readResourceEvent) Type() tokens.Type                { return g.baseType }
 func (g *readResourceEvent) Parent() resource.URN             { return g.parent }
 func (g *readResourceEvent) Properties() resource.PropertyMap { return g.props }
+func (g *readResourceEvent) Dependencies() []resource.URN     { return g.dependencies }
 func (g *readResourceEvent) Done(result *ReadResult) {
 	g.done <- result
 }
