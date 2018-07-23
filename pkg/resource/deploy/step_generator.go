@@ -102,14 +102,18 @@ func (sg *stepGenerator) GenerateSteps(event RegisterResourceEvent) ([]Step, err
 	// We may be re-creating this resource if it got deleted earlier in the execution of this plan.
 	_, recreating := sg.deletes[urn]
 
+	// We may be creating this resource if it previously existed in the snapshot as an External resource
+	wasExternal := hasOld && old.External
+
 	// If this isn't a refresh, ensure the provider is okay with this resource and fetch the inputs to pass to
 	// subsequent methods.  If these are not inputs, we are just going to blindly store the outputs, so skip this.
 	if prov != nil && !refresh {
 		var failures []plugin.CheckFailure
 
 		// If we are re-creating this resource because it was deleted earlier, the old inputs are now
-		// invalid (they got deleted) so don't consider them.
-		if recreating {
+		// invalid (they got deleted) so don't consider them. Similarly, if the old resource was External,
+		// don't consider those inputs since Pulumi does not own them.
+		if recreating || wasExternal {
 			inputs, failures, err = prov.Check(urn, nil, goal.Properties, allowUnknowns)
 		} else {
 			inputs, failures, err = prov.Check(urn, oldInputs, inputs, allowUnknowns)
@@ -175,6 +179,27 @@ func (sg *stepGenerator) GenerateSteps(event RegisterResourceEvent) ([]Step, err
 		return []Step{
 			NewReplaceStep(sg.plan, old, new, nil, false),
 			NewCreateReplacementStep(sg.plan, event, old, new, nil, false),
+		}, nil
+	}
+
+	// Case 2: wasExternal
+	//  In this case, the resource we are operating upon exists in the old snapshot, but it
+	//  was "external" - Pulumi does not own its lifecycle. Conceptually, this operation is
+	//  akin to "taking ownership" of a resource that we did not previously control.
+	//
+	//  Since we are not allowed to manipulate the existing resource, we must create a resource
+	//  to take its place. Since this is technically a replacement operation, we pend deletion of
+	//  read until the end of the plan.
+	if wasExternal {
+		logging.V(7).Infof("Planner recognized '%s' as old external resource, creating instead", urn)
+		sg.creates[urn] = true
+		diff, err := sg.diff(urn, old.ID, oldInputs, oldOutputs, inputs, outputs, props, prov, refresh, allowUnknowns)
+		if err != nil {
+			return nil, err
+		}
+
+		return []Step{
+			NewCreateReplacementStep(sg.plan, event, old, new, diff.ReplaceKeys, true),
 		}, nil
 	}
 
@@ -325,11 +350,13 @@ func (sg *stepGenerator) GenerateDeletes() []Step {
 			res := prev.Resources[i]
 			if res.Delete {
 				logging.V(7).Infof("Planner decided to delete '%v' due to replacement", res.URN)
+				// External resources can be pending deletion, if they were replaced by a non-external resource.
 				if res.External {
 					logging.V(7).Infof("Resource '%v' was read, removing from the snapshot", res.URN)
 					dels = append(dels, NewReadDeleteStep(sg.plan, res))
 					continue
 				}
+
 				// The below assert is commented-out because it's believed to be wrong.
 				//
 				// The original justification for this assert is that the author (swgillespie) believed that
@@ -352,7 +379,8 @@ func (sg *stepGenerator) GenerateDeletes() []Step {
 				}
 				sg.deletes[res.URN] = true
 				dels = append(dels, NewDeleteReplacementStep(sg.plan, res, true))
-			} else if !sg.sames[res.URN] && !sg.updates[res.URN] && !sg.replaces[res.URN] && !sg.deletes[res.URN] && !sg.reads[res.URN] {
+			} else if !sg.sames[res.URN] && !sg.updates[res.URN] && !sg.replaces[res.URN] &&
+				!sg.deletes[res.URN] && !sg.reads[res.URN] {
 				if res.External {
 					logging.V(7).Infof("Resource '%v' was read, removing from the snapshot", res.URN)
 					dels = append(dels, NewReadDeleteStep(sg.plan, res))
