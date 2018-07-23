@@ -158,8 +158,6 @@ func (sm *SnapshotManager) BeginMutation(step deploy.Step) (engine.SnapshotMutat
 		return &replaceSnapshotMutation{}, nil
 	case deploy.OpRead:
 		return &readSnapshotMutation{sm}, nil
-	case deploy.OpReadDelete:
-		return &readDeleteSnapshotMutation{sm}, nil
 	}
 
 	contract.Failf("unknown StepOp: %s", step.Op())
@@ -261,21 +259,6 @@ func (rsm *readSnapshotMutation) End(step deploy.Step, successful bool) error {
 			}
 
 			rsm.manager.markNew(step.New())
-		}
-	})
-}
-
-type readDeleteSnapshotMutation struct {
-	manager *SnapshotManager
-}
-
-func (rsm *readDeleteSnapshotMutation) End(step deploy.Step, successful bool) error {
-	contract.Require(step != nil, "step != nil")
-	contract.Require(step.Old() != nil, "step.Old() != nil")
-	logging.V(9).Infof("SnapshotManager: readDeleteSnapshotMutation.End(..., %v)", successful)
-	return rsm.manager.mutate(func() {
-		if successful {
-			rsm.manager.markDone(step.Old())
 		}
 	})
 }

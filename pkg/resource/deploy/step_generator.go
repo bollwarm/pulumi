@@ -200,6 +200,7 @@ func (sg *stepGenerator) GenerateSteps(event RegisterResourceEvent) ([]Step, err
 
 		return []Step{
 			NewCreateReplacementStep(sg.plan, event, old, new, diff.ReplaceKeys, true),
+			NewReplaceStep(sg.plan, old, new, diff.ReplaceKeys, true),
 		}, nil
 	}
 
@@ -289,13 +290,7 @@ func (sg *stepGenerator) GenerateSteps(event RegisterResourceEvent) ([]Step, err
 						logging.V(7).Infof("Planner decided to delete '%v' due to dependence on condemned resource '%v'",
 							dependentResource.URN, urn)
 
-						// If this resource was read, just remove it from the snapshot.
-						if dependentResource.External {
-							steps = append(steps, NewReadDeleteStep(sg.plan, dependentResource))
-						} else {
-							steps = append(steps, NewDeleteReplacementStep(sg.plan, dependentResource, false))
-						}
-
+						steps = append(steps, NewDeleteReplacementStep(sg.plan, dependentResource, false))
 						// Mark the condemned resource as deleted. We won't know until later in the plan whether
 						// or not we're going to be replacing this resource.
 						sg.deletes[dependentResource.URN] = true
@@ -350,13 +345,6 @@ func (sg *stepGenerator) GenerateDeletes() []Step {
 			res := prev.Resources[i]
 			if res.Delete {
 				logging.V(7).Infof("Planner decided to delete '%v' due to replacement", res.URN)
-				// External resources can be pending deletion, if they were replaced by a non-external resource.
-				if res.External {
-					logging.V(7).Infof("Resource '%v' was read, removing from the snapshot", res.URN)
-					dels = append(dels, NewReadDeleteStep(sg.plan, res))
-					continue
-				}
-
 				// The below assert is commented-out because it's believed to be wrong.
 				//
 				// The original justification for this assert is that the author (swgillespie) believed that
@@ -381,11 +369,6 @@ func (sg *stepGenerator) GenerateDeletes() []Step {
 				dels = append(dels, NewDeleteReplacementStep(sg.plan, res, true))
 			} else if !sg.sames[res.URN] && !sg.updates[res.URN] && !sg.replaces[res.URN] &&
 				!sg.deletes[res.URN] && !sg.reads[res.URN] {
-				if res.External {
-					logging.V(7).Infof("Resource '%v' was read, removing from the snapshot", res.URN)
-					dels = append(dels, NewReadDeleteStep(sg.plan, res))
-					continue
-				}
 				// In addition to the above comment, I am fairly certain there is a bug here. If a resource
 				// is not registered in a plan, but there exists a pending delete copy of that resource in the
 				// snapshot, we will choose not to delete the live resource and instead be content with deleting
