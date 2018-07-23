@@ -24,4 +24,4 @@ const b = new Resource("b", { state: a.state.apply((b: any) => b + 2)});
 // A: CreateReplacement
 // B: CreateReplacement
 // B: DeleteReplacement
-// A: ReadDelete
+// A: DeleteReplacement
