@@ -156,7 +156,7 @@ func (sm *SnapshotManager) BeginMutation(step deploy.Step) (engine.SnapshotMutat
 		return &deleteSnapshotMutation{sm}, nil
 	case deploy.OpReplace:
 		return &replaceSnapshotMutation{}, nil
-	case deploy.OpRead:
+	case deploy.OpRead, deploy.OpReadReplacement:
 		return &readSnapshotMutation{sm}, nil
 	}
 

@@ -190,7 +190,8 @@ func (s *CreateStep) Apply(preview bool) (resource.Status, error) {
 	return resourceStatus, resourceError
 }
 
-// DeleteStep is a mutating step that deletes an existing resource.
+// DeleteStep is a mutating step that deletes an existing resource. If `old` is marked "External",
+// DeleteStep is a no-op.
 type DeleteStep struct {
 	plan      *Plan           // the current plan.
 	old       *resource.State // the state of the existing resource.
@@ -390,13 +391,22 @@ func (s *ReplaceStep) Apply(preview bool) (resource.Status, error) {
 	return resource.StatusOK, nil
 }
 
+// ReadStep is a step indicating that an existing resources will be "read" and projected into the Pulumi object
+// model. Resources that are read are marked with the "External" bit which indicates to the engine that it does
+// not own this resource's lifeycle.
+//
+// A resource with a given URN can transition freely between an "external" state and a non-external state. If
+// a URN that was previously marked "External" (i.e. was the target of a ReadStep in a previous plan) is the
+// target of a RegisterResource in the next plan, a CreateReplacement step will be issued to indicate the transition
+// from external to owned. If a URN that was previously not marked "External" is the target of a ReadResource in the
+// next plan, a ReadReplacement step will be issued to indicate the transition from owned to external.
 type ReadStep struct {
-	plan      *Plan
-	event     ReadResourceEvent
-	old       *resource.State
-	new       *resource.State
-	replacing bool
-	keys      []resource.PropertyKey
+	plan      *Plan                  // the plan that produced this read
+	event     ReadResourceEvent      // the event that should be signaled upon completion
+	old       *resource.State        // the old resource state, if one exists for this urn
+	new       *resource.State        // the new resource state, to be used to query the provider
+	replacing bool                   // whether or not the new resource is replacing the old resource
+	keys      []resource.PropertyKey // diff keys between the old and new states
 }
 
 func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State,
@@ -404,6 +414,9 @@ func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State,
 	contract.Assert(new != nil)
 	contract.Assertf(new.External, "target of Read step must be marked External")
 	contract.Assertf(new.Custom, "target of Read step must be Custom")
+
+	// If Old was given, it can't be an external resource.
+	contract.Assert(old == nil || !old.External)
 	return &ReadStep{
 		plan:      plan,
 		event:     event,
@@ -417,8 +430,10 @@ func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State,
 func NewReadReplacementStep(plan *Plan, event ReadResourceEvent, old *resource.State,
 	new *resource.State, keys []resource.PropertyKey) Step {
 	contract.Assert(new != nil)
-	contract.Assertf(new.External, "target of Read step must be marked External")
-	contract.Assertf(new.Custom, "target of Read step must be Custom")
+	contract.Assertf(new.External, "target of ReadReplacement step must be marked External")
+	contract.Assertf(new.Custom, "target of ReadReplacement step must be Custom")
+	contract.Assert(old != nil)
+	contract.Assertf(!old.External, "old target of ReadReplacement step must not be External")
 	return &ReadStep{
 		plan:      plan,
 		event:     event,
