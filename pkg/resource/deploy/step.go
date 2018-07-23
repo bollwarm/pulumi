@@ -102,6 +102,7 @@ func NewCreateStep(plan *Plan, reg RegisterResourceEvent, new *resource.State) S
 	contract.Assert(new.URN != "")
 	contract.Assert(new.ID == "")
 	contract.Assert(!new.Delete)
+	contract.Assert(!new.External)
 	return &CreateStep{
 		plan: plan,
 		reg:  reg,
@@ -121,6 +122,7 @@ func NewCreateReplacementStep(plan *Plan, reg RegisterResourceEvent,
 	contract.Assert(new.ID == "")
 	contract.Assert(!new.Delete)
 	contract.Assert(old.Type == new.Type)
+	contract.Assert(!new.External)
 	return &CreateStep{
 		plan:          plan,
 		reg:           reg,
@@ -280,6 +282,8 @@ func NewUpdateStep(plan *Plan, reg RegisterResourceEvent, old *resource.State,
 	contract.Assert(new.ID == "")
 	contract.Assert(!new.Delete)
 	contract.Assert(old.Type == new.Type)
+	contract.Assert(!new.External)
+	contract.Assert(!old.External)
 	return &UpdateStep{
 		plan:    plan,
 		reg:     reg,
@@ -359,7 +363,7 @@ func NewReplaceStep(plan *Plan, old *resource.State, new *resource.State,
 	contract.Assert(!old.Delete)
 	contract.Assert(new != nil)
 	contract.Assert(new.URN != "")
-	contract.Assert(new.ID == "")
+	// contract.Assert(new.ID == "")
 	contract.Assert(!new.Delete)
 	return &ReplaceStep{
 		plan:          plan,
@@ -387,27 +391,52 @@ func (s *ReplaceStep) Apply(preview bool) (resource.Status, error) {
 }
 
 type ReadStep struct {
-	plan  *Plan
-	event ReadResourceEvent
-	old   *resource.State
-	new   *resource.State
-	keys  []resource.PropertyKey
+	plan      *Plan
+	event     ReadResourceEvent
+	old       *resource.State
+	new       *resource.State
+	replacing bool
+	keys      []resource.PropertyKey
 }
 
-func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State, new *resource.State, keys []resource.PropertyKey) Step {
+func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State,
+	new *resource.State, keys []resource.PropertyKey) Step {
 	contract.Assert(new != nil)
 	contract.Assertf(new.External, "target of Read step must be marked External")
 	contract.Assertf(new.Custom, "target of Read step must be Custom")
 	return &ReadStep{
-		plan:  plan,
-		event: event,
-		old:   old,
-		new:   new,
-		keys:  keys,
+		plan:      plan,
+		event:     event,
+		old:       old,
+		new:       new,
+		replacing: false,
+		keys:      keys,
 	}
 }
 
-func (s *ReadStep) Op() StepOp                   { return OpRead }
+func NewReadReplacementStep(plan *Plan, event ReadResourceEvent, old *resource.State,
+	new *resource.State, keys []resource.PropertyKey) Step {
+	contract.Assert(new != nil)
+	contract.Assertf(new.External, "target of Read step must be marked External")
+	contract.Assertf(new.Custom, "target of Read step must be Custom")
+	return &ReadStep{
+		plan:      plan,
+		event:     event,
+		old:       old,
+		new:       new,
+		replacing: true,
+		keys:      keys,
+	}
+}
+
+func (s *ReadStep) Op() StepOp {
+	if s.replacing {
+		return OpReadReplacement
+	}
+
+	return OpRead
+}
+
 func (s *ReadStep) Plan() *Plan                  { return s.plan }
 func (s *ReadStep) Type() tokens.Type            { return s.new.Type }
 func (s *ReadStep) URN() resource.URN            { return s.new.URN }
@@ -415,7 +444,7 @@ func (s *ReadStep) Old() *resource.State         { return s.old }
 func (s *ReadStep) New() *resource.State         { return s.new }
 func (s *ReadStep) Res() *resource.State         { return s.new }
 func (s *ReadStep) Keys() []resource.PropertyKey { return s.keys }
-func (s *ReadStep) Logical() bool                { return true }
+func (s *ReadStep) Logical() bool                { return !s.replacing }
 
 func (s *ReadStep) Apply(preview bool) (resource.Status, error) {
 	urn := s.new.URN
@@ -434,6 +463,10 @@ func (s *ReadStep) Apply(preview bool) (resource.Status, error) {
 		s.new.Outputs = result
 	}
 
+	if s.replacing {
+		s.old.Delete = true
+	}
+
 	s.event.Done(&ReadResult{State: s.new})
 	return resource.StatusOK, nil
 }
@@ -450,6 +483,7 @@ const (
 	OpCreateReplacement StepOp = "create-replacement" // creating a new resource for a replacement.
 	OpDeleteReplaced    StepOp = "delete-replaced"    // deleting an existing resource after replacement.
 	OpRead              StepOp = "read"               // reading an existing resource.
+	OpReadReplacement   StepOp = "read-replacement"   // reading an existing resource for a replacement.
 )
 
 // StepOps contains the full set of step operation types.
@@ -483,6 +517,8 @@ func (op StepOp) Color() string {
 		return colors.SpecDeleteReplaced
 	case OpRead:
 		return colors.SpecCreate
+	case OpReadReplacement:
+		return colors.SpecReplace
 	default:
 		contract.Failf("Unrecognized resource step op: '%v'", op)
 		return ""
@@ -513,6 +549,8 @@ func (op StepOp) RawPrefix() string {
 		return "--"
 	case OpRead:
 		return ">-"
+	case OpReadReplacement:
+		return ">~"
 	default:
 		contract.Failf("Unrecognized resource step op: %v", op)
 		return ""
@@ -521,7 +559,7 @@ func (op StepOp) RawPrefix() string {
 
 func (op StepOp) PastTense() string {
 	switch op {
-	case OpSame, OpCreate, OpDelete, OpReplace, OpCreateReplacement, OpDeleteReplaced, OpUpdate:
+	case OpSame, OpCreate, OpDelete, OpReplace, OpCreateReplacement, OpDeleteReplaced, OpUpdate, OpReadReplacement:
 		return string(op) + "d"
 	case OpRead:
 		return "read"
@@ -533,7 +571,7 @@ func (op StepOp) PastTense() string {
 
 // Suffix returns a suggested suffix for lines of this op type.
 func (op StepOp) Suffix() string {
-	if op == OpCreateReplacement || op == OpUpdate || op == OpReplace {
+	if op == OpCreateReplacement || op == OpUpdate || op == OpReplace || op == OpReadReplacement {
 		return colors.Reset // updates and replacements colorize individual lines; get has none
 	}
 	return ""

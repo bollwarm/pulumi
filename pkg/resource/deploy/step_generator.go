@@ -42,15 +42,33 @@ type stepGenerator struct {
 	sames    map[resource.URN]bool // set of URNs that were not changed in this plan
 }
 
-func (sg *stepGenerator) GenerateReadStep(event ReadResourceEvent) (Step, error) {
+// GenerateReadSteps is responsible for producing one or more steps required to service
+// a ReadResourceEvent coming from the language host.
+func (sg *stepGenerator) GenerateReadSteps(event ReadResourceEvent) ([]Step, error) {
 	urn := sg.generateURN(event.Parent(), event.Type(), event.Name())
 	newState := resource.NewState(event.Type(), urn, true /*custom*/, false /*delete*/, event.ID(),
 		event.Properties(), make(resource.PropertyMap) /* outputs */, event.Parent(), false, /*protect*/
 		true /*external*/, event.Dependencies())
+	old, hasOld := sg.plan.Olds()[urn]
 
-	old := sg.plan.Olds()[urn]
+	// If the snapshot has an old resource for this URN and it's not external, we're going
+	// to have to delete the old resource and conceptually replace it with the resource we
+	// are about to read.
+	//
+	// We accomplish this through the "read-replacement" step, which atomically reads a resource
+	// and marks the resource it is replacing as pending deletion.
+	if hasOld && !old.External {
+		sg.replaces[urn] = true
+		return []Step{
+			NewReadReplacementStep(sg.plan, event, old, newState, nil),
+			NewReplaceStep(sg.plan, old, newState, nil, true),
+		}, nil
+	}
+
 	sg.reads[urn] = true
-	return NewReadStep(sg.plan, event, old, newState, nil), nil
+	return []Step{
+		NewReadStep(sg.plan, event, old, newState, nil),
+	}, nil
 }
 
 // GenerateSteps produces one or more steps required to achieve the goal state
