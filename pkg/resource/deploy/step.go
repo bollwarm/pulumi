@@ -407,6 +407,7 @@ type ReadStep struct {
 	new       *resource.State        // the new resource state, to be used to query the provider
 	replacing bool                   // whether or not the new resource is replacing the old resource
 	keys      []resource.PropertyKey // diff keys between the old and new states
+
 }
 
 func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State,
@@ -416,7 +417,7 @@ func NewReadStep(plan *Plan, event ReadResourceEvent, old *resource.State,
 	contract.Assertf(new.Custom, "target of Read step must be Custom")
 
 	// If Old was given, it can't be an external resource.
-	contract.Assert(old == nil || !old.External)
+	contract.Assert(old == nil || old.External)
 	return &ReadStep{
 		plan:      plan,
 		event:     event,
