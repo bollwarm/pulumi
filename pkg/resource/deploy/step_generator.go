@@ -263,7 +263,13 @@ func (sg *stepGenerator) GenerateSteps(event RegisterResourceEvent) ([]Step, err
 
 						logging.V(7).Infof("Planner decided to delete '%v' due to dependence on condemned resource '%v'",
 							dependentResource.URN, urn)
-						steps = append(steps, NewDeleteReplacementStep(sg.plan, dependentResource, false))
+
+						// If this resource was read, just remove it from the snapshot.
+						if dependentResource.External {
+							steps = append(steps, NewReadDeleteStep(sg.plan, dependentResource))
+						} else {
+							steps = append(steps, NewDeleteReplacementStep(sg.plan, dependentResource, false))
+						}
 
 						// Mark the condemned resource as deleted. We won't know until later in the plan whether
 						// or not we're going to be replacing this resource.
