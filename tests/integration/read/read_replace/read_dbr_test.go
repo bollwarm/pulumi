@@ -20,6 +20,10 @@ func TestReadReplace(t *testing.T) {
 				Dir:      "step2",
 				Additive: true,
 			},
+			{
+				Dir:      "step3",
+				Additive: true,
+			},
 		},
 	})
 }

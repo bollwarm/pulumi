@@ -14,14 +14,7 @@
 
 import { Resource } from "./resource";
 
-// Resource A was read in the previous plan, but it's now created.
-const a = new Resource("a", { state: 42 });
-
-// B must be replaced.
+// Now go back the other way and make sure that "A" is external again.
+const a = new Resource("a", { state: 42 }, { id: "existing-id"} );
 const b = new Resource("b", { state: a.state.apply((b: any) => b + 1)});
 
-// The engine generates:
-// A: CreateReplacement
-// B: CreateReplacement
-// B: DeleteReplacement
-// A: DeleteReplacement
