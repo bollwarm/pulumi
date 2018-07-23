@@ -25,7 +25,7 @@ const c = new Resource("c", { state: b.state }, { id: "another-existing-id" })
 
 // The engine generates:
 // A: Same
-// C: Read-Delete
+// C: DeleteReplacement (read)
 // B: DeleteReplacement
 // B: Create
 // C: Read
