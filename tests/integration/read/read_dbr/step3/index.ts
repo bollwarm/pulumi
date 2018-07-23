@@ -15,17 +15,5 @@
 import { Resource } from "./resource";
 
 const a = new Resource("a", { state: 42 }, { id: "existing-id"} );
-
-// B must be replaced, but it is a DBR replacement.
 const b = new Resource("b", { state: a.state.apply((b: any) => b + 2)});
-
-// C depends on B, so it gets re-read. Before the read, it is removed from the
-// snapshot due to the deletion of B.
-const c = new Resource("c", { state: b.state }, { id: "another-existing-id" })
-
-// The engine generates:
-// A: Same
-// C: Read-Delete
-// B: DeleteReplacement
-// B: Create
-// C: Read
+// C does not show up in the plan, so it is deleted from the snapshot.

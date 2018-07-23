@@ -14,5 +14,15 @@ func TestReadDBR(t *testing.T) {
 		Dir:          "step1",
 		Dependencies: []string{"@pulumi/pulumi"},
 		Quick:        true,
+		EditDirs: []integration.EditDir{
+			{
+				Dir:      "step2",
+				Additive: true,
+			},
+			{
+				Dir:      "step3",
+				Additive: true,
+			},
+		},
 	})
 }
