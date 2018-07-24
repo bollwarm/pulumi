@@ -513,6 +513,7 @@ var StepOps = []StepOp{
 	OpCreateReplacement,
 	OpDeleteReplaced,
 	OpRead,
+	OpReadReplacement,
 }
 
 // Color returns a suggested color for lines of this op type.
