@@ -1,0 +1,40 @@
+#!/bin/bash
+set -eou pipefail
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+
+source "${SCRIPT_ROOT}/util.sh"
+
+function update-build-dependencies() {
+    local repo
+
+    if [ -e "Gopkg.lock" ]; then
+        local packagesToHack=()
+        for repo in "$@"; do
+            if grep "name = \"github.com/pulumi/${repo}\""; then
+                packagesToHack+=("github.com/pulumi/${repo}")
+            fi
+        done
+
+        echo "Would hack: ${packagesToHack[@]:-}"
+    fi
+
+    for repo in "$@"; do
+        echo "Would update depenencies from ${repo}"
+    done
+}
+
+PROCESSED=('')
+
+for repo in "$@"; do
+    echo "build ${repo}"
+    clone-pulumi-repo "${repo}"
+
+    cd "$(go env GOPATH)/src/github.com/pulumi/${repo}"
+    update-build-dependencies "${PROCESSED[@]:1}"
+    make ensure
+    make only_build
+    if [ -e ./scripts/publish-compose-artifacts ]; then
+        ./scripts/publish-compose-artifacts
+    fi
+    PROCESSED+=("${repo}")
+done

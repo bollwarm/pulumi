@@ -1,0 +1,15 @@
+#!/bin/bash
+set -eou pipefail
+SCRIPT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+
+source "${SCRIPT_ROOT}/util.sh"
+
+for repo in "$@"; do
+    echo "test ${repo}"
+    clone-pulumi-repo "${repo}"
+
+    cd "$(go env GOPATH)/src/github.com/pulumi/${repo}"
+    # update-test-dependencies "s3://eng.pulumi.com/composed/${TRAVIS_REPO_SLUG}/${TRAVIS_BUILD_NUMBER}"
+    # make ensure
+    # make only_test
+done

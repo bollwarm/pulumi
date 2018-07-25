@@ -1,13 +1,5 @@
 # It may be tempting to add parens around each individual clause in this expression, but Travis then builds pushes anyway
-if: branch = master OR branch =~ ^release/ OR tag IS present
-matrix:
-  include:
-    - os: linux
-      env: NODE_VERSION=v6.10.3
-    - os: linux
-      env: NODE_VERSION=v8.11.1 TRAVIS_PUBLISH_PACKAGES=true
-    - os: osx
-      env: NODE_VERSION=v9.11.1
+if: branch = master OR branch =~ ^release/ OR branch =~ ^feature/ OR tag IS present
 language: go
 go: 1.9
 sudo: true # give us 7.5GB and >2 bursted cores.
@@ -21,9 +13,20 @@ install:
     - source ${PULUMI_SCRIPTS}/ci/install-common-toolchain.sh
 before_script:
     - ${PULUMI_SCRIPTS}/ci/ensure-dependencies
-script:
-    - make travis_${TRAVIS_EVENT_TYPE}
 after_failure:
     - ${PULUMI_SCRIPTS}/ci/upload-failed-tests
 notifications:
     webhooks: https://ufci1w66n3.execute-api.us-west-2.amazonaws.com/stage/travis
+jobs:
+    include:
+        - stage: build
+          script:
+            - ./build/compose/build-downstream pulumi pulumi-aws
+        - stage: test-downstream
+          name: Test pulumi
+          script:
+            - ./build/compose/test-downstream pulumi
+        - stage: test-downstream
+          name: Test pulumi-aws
+          script:
+            - ./build/compose/test-downstream pulumi-aws

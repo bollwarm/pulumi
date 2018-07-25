@@ -1,0 +1,8 @@
+#!/bin/bash
+TEMP_DIR=$(mktemp -d)
+NPM_PACKAGE_NAME="pulumi-pulumi.tgz"
+yarn pack --filename "${TEMP_DIR}/${NPM_PACKAGE_NAME}"
+aws s3 cp --acl public-read "${TEMP_DIR}/pulumi-pulumi.tgz" "s3://eng.pulumi.com/composed/${TRAVIS_BUILD_SLUG}/${TRAVIS_BUILD_NUMBER}/nodejs/${NPM_PACKAGE_NAME}"
+aws s3 cp --acl public-read "/opt/pulumi/bin/pulumi" "s3://eng.pulumi.com/composed/${TRAVIS_BUILD_SLUG}/${TRAVIS_BUILD_NUMBER}/bin/"
+aws s3 cp --acl public-read "/opt/pulumi/bin/" "s3://eng.pulumi.com/composed/${TRAVIS_BUILD_SLUG}/${TRAVIS_BUILD_NUMBER}/bin/" --include "pulumi-resource-pulumi-*"
+aws s3 cp --acl public-read "/opt/pulumi/bin/" "s3://eng.pulumi.com/composed/${TRAVIS_BUILD_SLUG}/${TRAVIS_BUILD_NUMBER}/bin/" --include "pulumi-language-*"
